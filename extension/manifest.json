@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Article TTS — local read-aloud",
+  "version": "0.1.0",
+  "description": "Reads the current article aloud entirely in your browser using local Kokoro TTS. No backend, no data leaves your machine.",
+  "permissions": ["activeTab", "scripting", "sidePanel"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "background": {
+    "service_worker": "src/background.ts",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
+  },
+  "action": {
+    "default_title": "Read this article aloud"
+  }
+}

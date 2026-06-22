@@ -233,6 +233,24 @@ export function useArticlePlayer(paragraphs: Paragraph[]) {
     [playFrom],
   );
 
+  // Reset playback state when a new article is loaded into the same hook
+  // instance (e.g. extension side panel re-extracting on tab switch).
+  // Without this, decoded AudioBuffers from the previous article never get
+  // evicted — eviction in `prefetch` only runs relative to the paragraph
+  // currently being played, so it never fires if nothing is playing yet.
+  const prevParagraphsRef = useRef(paragraphs);
+  useEffect(() => {
+    if (prevParagraphsRef.current === paragraphs) return;
+    prevParagraphsRef.current = paragraphs;
+    stopRequestedRef.current = true;
+    stopSource();
+    bufferCacheRef.current.clear();
+    pendingSynthRef.current.clear();
+    pausedAtRef.current = 0;
+    setCurrentIndex(null);
+    setIsPlaying(false);
+  }, [paragraphs, stopSource]);
+
   useEffect(() => {
     return () => {
       stopRequestedRef.current = true;

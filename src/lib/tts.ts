@@ -1,9 +1,16 @@
-import { KokoroTTS } from "kokoro-js";
+import { KokoroTTS, env } from "kokoro-js";
 
 export type Device = "webgpu" | "wasm";
 export type Dtype = "fp32" | "fp16" | "q8" | "q4" | "q4f16";
 
 const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
+
+// Without this, onnxruntime-web fetches its wasm backend loader from
+// jsDelivr at runtime — that fetch is blocked by extension page CSP, and
+// breaks the "everything runs locally" promise even in the plain web app.
+// The matching .wasm/.mjs files are copied into public/ from
+// node_modules/@huggingface/transformers/dist at the same version.
+env.wasmPaths = "/";
 
 export interface LoadProgress {
   status: string;
