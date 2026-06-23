@@ -1,0 +1,1 @@
+Reads any webpage aloud using a local speech model — no servers, no tracking, no cloud.

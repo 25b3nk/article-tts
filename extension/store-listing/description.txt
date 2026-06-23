@@ -1,0 +1,26 @@
+Article TTS reads the article you're looking at aloud, in your browser, using a local neural text-to-speech model (Kokoro 82M). Nothing about what you're reading ever leaves your machine.
+
+★ Why this exists
+Most "read aloud" features send your article to a third-party cloud server to synthesize it. This one doesn't. The first time you use it, the speech model downloads once (about 80–300 MB depending on your GPU), gets cached by your browser, and then everything — extraction, synthesis, playback — happens locally.
+
+★ How it works
+1. Click the extension icon while viewing any article (Wikipedia, a blog post, a news article, anything with readable text).
+2. The extension extracts the article's main content using Mozilla's Readability library (the same one Firefox Reader View uses), then opens a side panel with the cleaned paragraphs.
+3. Hit Play. Paragraphs are sent one at a time to the local Kokoro model and played through your browser's Web Audio engine. The currently-playing paragraph is highlighted; click any paragraph to jump there; use the Prev/Next buttons to skip.
+4. Want to tweak the reading? Pick from 8 voices (English male/female accents), or change the playback speed from 0.75× to 2×.
+
+★ Performance
+On a machine with WebGPU (most modern laptops/desktops), synthesis runs on the GPU and is fast enough to keep up with reading. On machines without WebGPU, the extension falls back to WASM with a quantized model — slower but still usable on most articles.
+
+★ Permissions explained
+- activeTab, scripting — needed to read the content of the page you clicked the icon on. The extension does NOT read pages in the background, does NOT auto-scan your tabs, and does NOT monitor your browsing.
+- sidePanel — needed to display the player next to the article.
+- <all_urls> host permission — Readability.js needs to be able to read the article DOM regardless of which site it's on. The extension only runs the read-content script after YOU click the icon.
+
+★ Privacy
+- No data collection, no analytics, no telemetry.
+- The speech model is fetched once from Hugging Face (cdn-lfs.huggingface.co) and cached.
+- The article content you select NEVER leaves your browser. Synthesis runs entirely client-side.
+
+★ Open source
+Source: https://github.com/25b3nk/article-tts (issues and contributions welcome).

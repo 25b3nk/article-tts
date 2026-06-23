@@ -1,0 +1,21 @@
+Single-purpose description
+Article TTS extracts the visible text of the active article (using Mozilla Readability) and synthesizes it to speech via a local neural TTS model (Kokoro 82M). All processing happens in the user's browser; no article content, user data, or synthesized audio is transmitted off-device.
+
+Permission justifications
+
+activeTab, scripting:
+The extension uses chrome.scripting.executeScript only in response to a user click on the extension's toolbar icon. It runs a single function that returns document.documentElement.outerHTML and location.href so the extension's side panel can parse the article. This is the minimum needed to read the active tab's content, and it only fires when the user explicitly opens the extension.
+
+sidePanel:
+Required to display the player UI (paragraphs, controls) next to the article in Chrome's side panel.
+
+host_permissions ("http://*/*", "https://*/*"):
+Mozilla Readability runs inside the captured page DOM. To extract clean article text from any site the user chooses to read, the extension needs to be able to inject and execute Readability.js across all sites. The extension does not initiate any network requests to these hosts; the host permission is solely for in-page DOM access on user demand. The extension never scans tabs in the background or auto-extracts content.
+
+Data usage
+None. The extension does not collect, store, transmit, or sell any user data. Article text is processed in-memory only and discarded after playback. The local TTS model is fetched once from Hugging Face's CDN (cdn-lfs.huggingface.co) and cached by the browser; no analytics or tracking is associated with that fetch.
+
+User controls
+- Extraction only runs when the user clicks the extension icon. There is no background or automatic extraction.
+- The extension does not modify the host page, only reads its DOM.
+- All synthesized audio is played via the browser's Web Audio API and is never persisted.
