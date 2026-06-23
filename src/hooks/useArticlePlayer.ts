@@ -21,6 +21,46 @@ function savePref<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+// Kokoro's voice/tone consistency degrades over long utterances (small
+// model, weaker on long sequences). Sentence-level splitting helps, but a
+// long comma-free sentence can still drift mid-utterance. Breaking further
+// at commas — falling back to fixed word-count chunks for any run-on
+// segment with no commas — keeps each synthesis call short enough for
+// steady tone, at the cost of slightly more frequent pauses.
+const MAX_WORDS_PER_CHUNK = 15;
+
+function wordCount(s: string): number {
+  return s.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function splitLongSentence(sentence: string): string[] {
+  if (wordCount(sentence) <= MAX_WORDS_PER_CHUNK) return [sentence];
+
+  const commaParts = sentence.split(/(?<=,)\s+/);
+  const chunks: string[] = [];
+  let current = "";
+  for (const part of commaParts) {
+    const candidate = current ? `${current} ${part}` : part;
+    if (!current || wordCount(candidate) <= MAX_WORDS_PER_CHUNK) {
+      current = candidate;
+    } else {
+      chunks.push(current);
+      current = part;
+    }
+  }
+  if (current) chunks.push(current);
+
+  return chunks.flatMap((chunk) => {
+    if (wordCount(chunk) <= MAX_WORDS_PER_CHUNK) return [chunk];
+    const words = chunk.trim().split(/\s+/);
+    const pieces: string[] = [];
+    for (let i = 0; i < words.length; i += MAX_WORDS_PER_CHUNK) {
+      pieces.push(words.slice(i, i + MAX_WORDS_PER_CHUNK).join(" "));
+    }
+    return pieces;
+  });
+}
+
 export function useArticlePlayer(paragraphs: Paragraph[]) {
   const [modelStatus, setModelStatus] = useState<ModelStatus>("idle");
   const [progressText, setProgressText] = useState("");
@@ -105,10 +145,44 @@ export function useArticlePlayer(paragraphs: Paragraph[]) {
 
       const promise = (async () => {
         const tts = await ensureModel();
-        const raw = await tts.generate(paragraph.text, { voice });
-        const wav = raw.toWav();
+        // Kokoro's prosody was trained on single sentences — feeding a
+        // whole multi-sentence paragraph through `generate()` in one shot
+        // can make the voice strain/drift mid-utterance, especially across
+        // clause breaks (colons, lists). So we split into sentences and
+        // synthesize each independently, then concat the raw PCM into one
+        // buffer so playback/pause/highlighting still treat the paragraph
+        // as a single unit.
+        //
+        // NOT using kokoro-js's stream() for this: its internal
+        // TextSplitterStream iterator never terminates. stream() pushes
+        // all chunks but never calls .close() on the stream, so after the
+        // last available sentence is yielded, the iterator's `for await`
+        // loop awaits an unresolved promise forever (verified against the
+        // shipped 1.2.1 source) — this hangs the whole tab. Splitting and
+        // calling the plain `generate()` ourselves avoids that path
+        // entirely.
+        const sentences = paragraph.text
+          .split(/(?<=[.!?:;])\s+/)
+          .flatMap(splitLongSentence)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        const chunks: Float32Array[] = [];
+        let sampleRate = 24000;
+        for (const sentence of sentences) {
+          const raw = await tts.generate(sentence, { voice });
+          chunks.push(raw.audio);
+          sampleRate = raw.sampling_rate;
+        }
+        const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+        const merged = new Float32Array(totalLength);
+        let offset = 0;
+        for (const c of chunks) {
+          merged.set(c, offset);
+          offset += c.length;
+        }
         const ctx = getAudioCtx();
-        const buffer = await ctx.decodeAudioData(wav);
+        const buffer = ctx.createBuffer(1, merged.length, sampleRate);
+        buffer.copyToChannel(merged, 0);
         bufferCacheRef.current.set(index, buffer);
         pendingSynthRef.current.delete(index);
         return buffer;
@@ -163,34 +237,41 @@ export function useArticlePlayer(paragraphs: Paragraph[]) {
       try {
         buffer = await synthesizeParagraph(index);
       } catch (err) {
+        console.error("article-tts: synthesis failed", err);
         setError(err instanceof Error ? err.message : String(err));
         return;
       }
       if (stopRequestedRef.current) return;
 
-      stopSource();
-      const ctx = getAudioCtx();
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.playbackRate.value = speed;
-      source.connect(ctx.destination);
-      source.onended = () => {
-        if (sourceRef.current !== source) return; // superseded
-        sourceRef.current = null;
-        if (stopRequestedRef.current) return;
-        const next = index + 1;
-        if (next < paragraphs.length) {
-          playFrom(next);
-        } else {
-          setIsPlaying(false);
-        }
-      };
+      try {
+        stopSource();
+        const ctx = getAudioCtx();
+        if (ctx.state === "suspended") await ctx.resume();
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.playbackRate.value = speed;
+        source.connect(ctx.destination);
+        source.onended = () => {
+          if (sourceRef.current !== source) return; // superseded
+          sourceRef.current = null;
+          if (stopRequestedRef.current) return;
+          const next = index + 1;
+          if (next < paragraphs.length) {
+            playFrom(next);
+          } else {
+            setIsPlaying(false);
+          }
+        };
 
-      sourceRef.current = source;
-      pausedAtRef.current = offsetSeconds;
-      startedAtRef.current = ctx.currentTime - offsetSeconds / speed;
-      source.start(0, offsetSeconds);
-      setIsPlaying(true);
+        sourceRef.current = source;
+        pausedAtRef.current = offsetSeconds;
+        startedAtRef.current = ctx.currentTime - offsetSeconds / speed;
+        source.start(0, offsetSeconds);
+        setIsPlaying(true);
+      } catch (err) {
+        console.error("article-tts: playback failed", err);
+        setError(err instanceof Error ? err.message : String(err));
+      }
     },
     [paragraphs.length, prefetch, synthesizeParagraph, speed, stopSource],
   );

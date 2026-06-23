@@ -3,12 +3,15 @@ import { extractFromHtml, type ExtractedArticle } from "../../../src/lib/extract
 import { VOICE_LIST } from "../../../src/lib/tts";
 import { useArticlePlayer } from "../../../src/hooks/useArticlePlayer";
 
+// Stable reference — see App.tsx for why this matters (React error #185).
+const EMPTY_PARAGRAPHS: never[] = [];
+
 function SidePanel() {
   const [article, setArticle] = useState<ExtractedArticle | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
 
-  const paragraphs = article?.paragraphs ?? [];
+  const paragraphs = article?.paragraphs ?? EMPTY_PARAGRAPHS;
   const player = useArticlePlayer(paragraphs);
   const paragraphRefs = useRef<Map<number, HTMLParagraphElement>>(new Map());
 

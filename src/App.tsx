@@ -10,6 +10,13 @@ import { useArticlePlayer } from "./hooks/useArticlePlayer";
 
 type Mode = "url" | "text";
 
+// Stable reference so useArticlePlayer's article-change detection (which
+// compares `paragraphs` by identity) doesn't see a "new article" on every
+// render when there's no article loaded yet — `?? []` would otherwise
+// allocate a fresh empty array each render and trigger an infinite reset
+// loop (React error #185).
+const EMPTY_PARAGRAPHS: never[] = [];
+
 function App() {
   const [mode, setMode] = useState<Mode>("url");
   const [urlInput, setUrlInput] = useState("");
@@ -21,7 +28,7 @@ function App() {
   const [extracting, setExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
 
-  const paragraphs = article?.paragraphs ?? [];
+  const paragraphs = article?.paragraphs ?? EMPTY_PARAGRAPHS;
   const player = useArticlePlayer(paragraphs);
   const paragraphRefs = useRef<Map<number, HTMLParagraphElement>>(new Map());
 
